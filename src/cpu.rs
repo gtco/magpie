@@ -136,12 +136,15 @@ impl MOS6502 {
         let addr = 0x100 + (self.reg_sp as u16) as u16;
         self.write_u8(addr, value);
         self.reg_sp = self.reg_sp - 1;
+        println!("stack push -> addr {:04x}, value {:02x} SP {:04x} ", addr, value, self.reg_sp);        
     }
 
     fn stack_pull(&mut self) -> u8 {
+        self.reg_sp = self.reg_sp + 1;
         let addr = 0x100 + (self.reg_sp as u16) as u16;
         let result = self.read_u8(addr);
-        self.reg_sp = self.reg_sp + 1;
+
+        println!("stack pull -> addr {:04x}, value {:02x}, SP {:02x}", addr, result, self.reg_sp);
         result
     }
 
@@ -184,18 +187,18 @@ impl MOS6502 {
     fn adc(&mut self, value: u8) {
         let sum = (self.reg_a as u16) + (value as u16) + (self.get_carry_amount() as u16);
         let result = sum as u8;
-        self.f_carry = sum > 0xff;
+        self.f_carry = sum & 0xff00 > 0;
         self.f_overflow = (self.reg_a ^ value) & 0x80 == 0 && (self.reg_a ^ result) & 0x80 == 0x80;
         self.reg_a = result;
         self.update_flags_zn(result);
     }
 
     fn sbc(&mut self, value: u8) {
-        let borrow = if self.f_carry { 0 } else { 1 };
+        let borrow = if self.f_carry { 1 } else { 0 };
         let complement = 255 - value;
         let sum = (self.reg_a as u16) + (complement as u16) + (borrow as u16);
         let result = sum as u8;
-        self.f_carry = sum > 0xff;
+        self.f_carry = sum & 0xff00 > 0;
         self.f_overflow = (self.reg_a ^ complement) & 0x80 == 0 && (self.reg_a ^ result) & 0x80 == 0x80;
         self.reg_a = result;
         self.update_flags_zn(result);
@@ -591,8 +594,10 @@ impl MOS6502 {
                         //RTS,IMP,1,6,czidbVN
                         let mut addr = self.stack_pull() as u16;
                         addr |= (self.stack_pull() as u16) << 8;
-                        self.cycles(2);
+                        let original = self.reg_pc;
                         self.reg_pc = addr;
+                        println!("RTS initial {:04x}, addr {:04x}, destination {:04x}", original, addr, self.reg_pc);
+                        self.cycles(2);                        
                     }
                     0x38 => {
                         //SEC,IMP,1,2,CzidbVN
@@ -939,6 +944,7 @@ impl MOS6502 {
                         //JMP,ABS,3,3,czidbVN
                         let mut addr = self.read_pc() as u16;
                         addr |= (self.read_pc() as u16) << 8;
+                        println!("JMP ABS initial {:04x}, destination {:04x}", self.reg_pc, addr);
                         self.reg_pc = addr;
                     }
                     0x6c => {
@@ -946,17 +952,19 @@ impl MOS6502 {
                         let mut addr = self.read_pc() as u16;
                         addr |= (self.read_pc() as u16) << 8;
                         let dest = self.get_indirect_addr(addr);
+                        println!("JMP IND addr {:04x}, initial {:04x}, destination {:04x}", addr, self.reg_pc, dest);
                         self.reg_pc = dest;
                     }
                     0x20 => {
                         //JSR,ABS,3,6,czidbVN
                         let mut addr = self.read_pc() as u16;
                         addr |= (self.read_pc() as u16) << 8;
-                        self.cycles(3);
                         let reg_pc = self.reg_pc;
                         self.stack_push((reg_pc >> 8) as u8);
                         self.stack_push(reg_pc as u8);
                         self.reg_pc = addr;
+                        println!("JSR initial {:04x}, destination {:04x}", reg_pc, addr);
+                        self.cycles(3);                        
                     }
                     0xa9 => {
                         //LDA,IMM,2,2,cZidbVN
@@ -1361,8 +1369,7 @@ impl MOS6502 {
                     }
                     0xf1 => {
                         //SBC,INDY,2,5,CZidbv
-                        let offset = self.reg_y;
-                        let addr = self.get_absolute_addr(offset);
+                        let addr = self.get_indirect_y_addr();
                         let value = self.read_u8(addr);
                         self.sbc(value);
                         self.cycles(5);
@@ -1570,5 +1577,4 @@ mod tests {
         assert_eq!(carry, false);
         assert_eq!(register, 218);
     }
-
 }

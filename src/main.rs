@@ -29,7 +29,7 @@ fn main() {
     let mut cpu = magpie::cpu::MOS6502::new();
     cpu.reset();
 
-    cpu.load(buf, 0x4000);
+    cpu.load(buf, 0x600);
 
     let n = cpu.run(2048);
 

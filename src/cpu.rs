@@ -1,4 +1,4 @@
-pub const MEMORY_SIZE: usize = 64 * 1024;
+pub const MEMORY_SIZE: usize =4 * 1024;
 
 pub struct MOS6502 {
     reg_a: u8,
@@ -200,9 +200,41 @@ impl MOS6502 {
         self.update_flags_zn(result);
     }
 
+    fn ror(&mut self, value: u8) -> u8 {
+        let carry = if self.f_carry { 0x80 } else { 0 };
+        self.f_carry = (value & 0x01) == 0x01;
+        let result = carry | (value >> 1);
+        self.update_flags_zn(result as u8);
+        result as u8
+    }
+
+    fn rol(&mut self, value: u8) -> u8 {
+        let carry = if self.f_carry { 0x01 } else { 0 };
+        let result = (value as u16) << 1 | carry;
+        self.f_carry = (result & 0xff00) > 0;
+        self.update_flags_zn(result as u8);        
+        result as u8
+    }
+
+    fn asl(&mut self, value: u8) -> u8 {
+        let shift = (value as u16) << 1;
+        self.f_carry = shift & 0xff00 > 0;
+        self.update_flags_zn(shift as u8);        
+        shift as u8
+    }
+
+    fn lsr(&mut self, value: u8) -> u8 {
+        self.f_carry = (value & 0x01) == 0x01;
+        let result = value >> 1;
+        self.update_flags_zn(result);
+        result
+    }
+
     pub fn run(&mut self, target_cycles: i32) -> i32 {
         self.cycle_count = 0;
+        let mut i = 0;
         while self.cycle_count < target_cycles {
+            i = i + 1;
             if !self.is_stopped {
                 let result = self.read_u8(0x210);
                 println!("result = {}", result);
@@ -210,11 +242,12 @@ impl MOS6502 {
                 let opcode = self.read_pc();
                 let r = self.get_status_registers();
                 println!(
-                    "A {}, X {}, Y {}, PC {}, SP {}, R {}, OP {}",
+                    "{:02}) A {:02X}, X {:02X}, Y {:02X}, PC {:04X}, SP {:02X}, R {:08b}, OP {:02X}",
+                    i,
                     self.reg_a,
                     self.reg_x,
                     self.reg_y,
-                    self.reg_pc,
+                    (self.reg_pc - 1),
                     self.reg_sp,
                     r, 
                     opcode
@@ -354,23 +387,16 @@ impl MOS6502 {
                     }
                     0x0a => {
                         //ASL,ACC,1,2,CZidbvN
-                        let shift = (self.reg_a << 1) as u16;
-                        self.f_carry = (shift & 0x100) == 1;
-                        let result = (shift & 0xff) as u8;
-                        self.reg_a = result;
-                        self.update_flags_zn(result);
+                        let value = self.reg_a;
+                        self.reg_a = self.asl(value);
                         self.cycles(2);
                     }
                     0x06 => {
                         //ASL,ZP,2,5,CZidbvN
                         let addr = self.get_zeropage_addr(0);
                         let mut value = self.read_u8(addr);
-                        let shift = (value << 1) as u16;
-                        self.f_carry = (shift & 0x100) == 1;
-                        let result = (shift & 0xff) as u8;
-                        value = result;
+                        value = self.asl(value);
                         self.write_u8(addr, value);
-                        self.update_flags_zn(value);
                         self.cycles(5);
                     }
                     0x16 => {
@@ -378,24 +404,16 @@ impl MOS6502 {
                         let offset = self.reg_x;
                         let addr = self.get_zeropage_addr(offset);
                         let mut value = self.read_u8(addr);
-                        let shift = (value << 1) as u16;
-                        self.f_carry = (shift & 0x100) == 1;
-                        let result = (shift & 0xff) as u8;
-                        value = result;
+                        value = self.asl(value);
                         self.write_u8(addr, value);
-                        self.update_flags_zn(value);
                         self.cycles(5);
                     }
                     0x0e => {
                         //ASL,ABS,3,6,CZidbvN
-                        let addr = self.get_absolute_addr(9);
+                        let addr = self.get_absolute_addr(0);
                         let mut value = self.read_u8(addr);
-                        let shift = (value << 1) as u16;
-                        self.f_carry = (shift & 0x100) == 1;
-                        let result = (shift & 0xff) as u8;
-                        value = result;
+                        value = self.asl(value);
                         self.write_u8(addr, value);
-                        self.update_flags_zn(value);
                         self.cycles(5);
                     }
                     0x1e => {
@@ -403,12 +421,8 @@ impl MOS6502 {
                         let offset = self.reg_x;
                         let addr = self.get_absolute_addr(offset);
                         let mut value = self.read_u8(addr);
-                        let shift = (value << 1) as u16;
-                        self.f_carry = (shift & 0x100) == 1;
-                        let result = (shift & 0xff) as u8;
-                        value = result;
+                        value = self.asl(value);
                         self.write_u8(addr, value);
-                        self.update_flags_zn(value);
                         self.cycles(5);
                     }
                     0x90 => {
@@ -1093,57 +1107,43 @@ impl MOS6502 {
                     }
                     0x4a => {
                         //LSR,ACC,1,2,CZidbVN
-                        let bit_zero = self.reg_a & 0x01;
-                        let result = self.reg_a >> 1;
-                        self.f_carry = bit_zero == 1;
+                        let value = self.reg_a;
+                        let result = self.lsr(value);
                         self.reg_a = result;
-                        self.update_flags_zn(result);
                         self.cycles(2);
                     }
                     0x46 => {
                         //LSR,ZP,2,5,CZidbVN
-                        let bit_zero = self.reg_a & 0x01;
                         let addr = self.get_zeropage_addr(0);
                         let value = self.read_u8(addr);
-                        let result = value >> 1;
+                        let result = self.lsr(value);
                         self.write_u8(addr, result);
-                        self.f_carry = bit_zero == 1;
-                        self.update_flags_zn(result);
                         self.cycles(5);
                     }
                     0x56 => {
                         //LSR,ZPX,2,6,CZidbVN
-                        let bit_zero = self.reg_a & 0x01;
                         let offset = self.reg_x;
                         let addr = self.get_zeropage_addr(offset);
                         let value = self.read_u8(addr);
-                        let result = value >> 1;
+                        let result = self.lsr(value);
                         self.write_u8(addr, result);
-                        self.f_carry = bit_zero == 1;
-                        self.update_flags_zn(result);
                         self.cycles(5);
                     }
                     0x4e => {
                         //LSR,ABS,3,6,CZidbVN
-                        let bit_zero = self.reg_a & 0x01;
-                        let addr = self.get_zeropage_addr(0);
+                        let addr = self.get_absolute_addr(0);
                         let value = self.read_u8(addr);
-                        let result = value >> 1;
+                        let result = self.lsr(value);
                         self.write_u8(addr, result);
-                        self.f_carry = bit_zero == 1;
-                        self.update_flags_zn(result);
                         self.cycles(6);
                     }
                     0x5e => {
                         //LSR,ABSX,3,7,CZidbv
-                        let bit_zero = self.reg_a & 0x01;
                         let offset = self.reg_x;
                         let addr = self.get_absolute_addr(offset);
                         let value = self.read_u8(addr);
-                        let result = value >> 1;
+                        let result = self.lsr(value);
                         self.write_u8(addr, result);
-                        self.f_carry = bit_zero == 1;
-                        self.update_flags_zn(result);
                         self.cycles(7);
                     }
                     0x09 => {
@@ -1222,112 +1222,84 @@ impl MOS6502 {
                     }
                     0x2a => {
                         //ROL,ACC,1,2,CZidbVN
-                        let carry = if self.f_carry { 1 } else { 0 };
                         let value = self.reg_a;
-                        self.f_carry = (value & 0x80) != 0;
-                        let ret = (value << 1) | carry;
-                        self.reg_a = ret;
-                        self.update_flags_zn(ret);
+                        let result = self.rol(value);
+                        self.reg_a = result;
                         self.cycles(2);
                     }
                     0x26 => {
                         //ROL,ZP,2,5,CZidbVN
-                        let carry = if self.f_carry { 1 } else { 0 };
                         let addr = self.get_zeropage_addr(0);
                         let value = self.read_u8(addr);
-                        self.f_carry = (value & 0x80) != 0x80;
-                        let ret = (value << 1) | carry;
+                        let result = self.rol(value);
                         self.write_u8(addr, result);
-                        self.update_flags_zn(ret);
                         self.cycles(5);
                     }
                     0x36 => {
                         //ROL,ZPX,2,6,CZidbVN
-                        let carry = if self.f_carry { 1 } else { 0 };
                         let offset = self.reg_x;
                         let addr = self.get_zeropage_addr(offset);
                         let value = self.read_u8(addr);
-                        self.f_carry = (value & 0x80) != 0x80;
-                        let ret = (value << 1) | carry;
+                        let result = self.rol(value);
                         self.write_u8(addr, result);
-                        self.update_flags_zn(ret);
                         self.cycles(6);
                     }
                     0x2e => {
                         //ROL,ABS,3,6,CZidbVN
-                        let carry = if self.f_carry { 1 } else { 0 };
                         let addr = self.get_absolute_addr(0);
                         let value = self.read_u8(addr);
-                        self.f_carry = (value & 0x80) != 0x80;
-                        let ret = (value << 1) | carry;
+                        let result = self.rol(value);
                         self.write_u8(addr, result);
-                        self.update_flags_zn(ret);
                         self.cycles(6);
                     }
                     0x3e => {
                         //ROL,ABSX,3,7,CZidbv
-                        let carry = if self.f_carry { 1 } else { 0 };
                         let offset = self.reg_x;
                         let addr = self.get_absolute_addr(offset);
                         let value = self.read_u8(addr);
-                        self.f_carry = (value & 0x80) != 0x80;
-                        let result = (value << 1) | carry;
+                        let result = self.rol(value);
                         self.write_u8(addr, result);                       
-                        self.update_flags_zn(result);
                         self.cycles(6);
                     }
                     0x6a => {
                         //ROR,ACC,1,2,CZidbVN
-                        let carry = if self.f_carry { 0x80 } else { 0 };
                         let value = self.reg_a;
-                        self.f_carry = (value & 0x01) != 0;
-                        let result = carry | (value >> 1);
-                        self.update_flags_zn(result);
+                        let result = self.ror(value);
                         self.reg_a = result;
                         self.cycles(2);
                     }
                     0x66 => {
                         //ROR,ZP,2,5,CZidbVN
-                        let carry = if self.f_carry { 0x80 } else { 0 };
                         let addr = self.get_zeropage_addr(0);
                         let value = self.read_u8(addr);
-                        self.f_carry = (value & 0x01) != 0;
-                        let result = carry | (value >> 1);
+                        let result = self.ror(value);
                         self.write_u8(addr, result);                        
-                        self.update_flags_zn(result);
                         self.cycles(5);
                     }
                     0x76 => {
                         //ROR,ZPX,2,6,CZidbVN
-                        let carry = if self.f_carry { 0x80 } else { 0 };
                         let offset = self.reg_x;
                         let addr = self.get_zeropage_addr(offset);
                         let value = self.read_u8(addr);
-                        self.f_carry = (value & 0x01) != 0;
-                        let result = carry | (value >> 1);
+                        let result = self.ror(value);
                         self.write_u8(addr, result);                        
-                        self.update_flags_zn(result);
                         self.cycles(6);
                     }
                     0x7e => {
                         //ROR,ABS,3,6,CZidbVN
-                        let carry = if self.f_carry { 0x80 } else { 0 };
                         let addr = self.get_absolute_addr(0);
                         let value = self.read_u8(addr);
-                        self.f_carry = (value & 0x01) != 0;
-                        let result = carry | (value >> 1);
+                        let result = self.ror(value);
                         self.write_u8(addr, result);                        
                         self.update_flags_zn(result);
                         self.cycles(6);
                     }
                     0x6e => {
                         //ROR,ABSX,3,7,CZidbv
-                        let carry = if self.f_carry { 0x80 } else { 0 };
                         let offset = self.reg_x;
                         let addr = self.get_absolute_addr(offset);
                         let value = self.read_u8(addr);
-                        self.f_carry = (value & 0x01) != 0;
-                        let result = carry | (value >> 1);
+                        let result = self.ror(value);
                         self.write_u8(addr, result);                        
                         self.update_flags_zn(result);
                         self.cycles(6);
@@ -1418,6 +1390,7 @@ impl MOS6502 {
                         let offset = self.reg_x;
                         let addr = self.get_absolute_addr(offset);
                         let val = self.reg_a;
+                        println!(" offset {:02x}, addr {:02x}, val {:02x}", offset, addr, val);
                         self.write_u8(addr, val);
                         self.cycles(5);
                     }
@@ -1555,4 +1528,44 @@ mod tests {
         assert_eq!(cpu.f_carry, true);
         assert_eq!(cpu.f_overflow, true);
     }
+
+    #[test]
+    fn ror () {
+        let mut cpu = MOS6502::new();
+        cpu.reset();
+        cpu.f_carry = true;
+        let result = cpu.ror(108);
+        assert_eq!(result, 182);
+        assert_eq!(cpu.f_carry, false);
+    }
+
+    #[test]
+    fn rol () {
+        let mut cpu = MOS6502::new();
+        cpu.reset();
+        let result2 = cpu.rol(149);
+        assert_eq!(result2 as u8, 42);
+        assert_eq!(cpu.f_carry, true);
+    }
+
+    #[test]
+    fn asl_true() {
+        let value = 181;
+        let result = (value as u16) << 1;
+        let carry = result & 0xff00 > 0;
+        let register = result as u8;
+        assert_eq!(carry, true);
+        assert_eq!(register, 106);
+    }
+
+    #[test]
+    fn asl_false() {
+        let value = 109;
+        let result = (value as u16) << 1;
+        let carry = result & 0xff00 > 0;
+        let register = result as u8;
+        assert_eq!(carry, false);
+        assert_eq!(register, 218);
+    }
+
 }

@@ -1,4 +1,4 @@
-pub const MEMORY_SIZE: usize =4 * 1024;
+pub const MEMORY_SIZE: usize = 64 * 1024;
 
 pub struct MOS6502 {
     reg_a: u8,
@@ -72,11 +72,11 @@ impl MOS6502 {
         let addr = self.reg_pc;
         let ret = self.read_u8(addr);
         self.reg_pc += 1;
-        if self.reg_pc >= 0x45C0 {
-            self.is_stopped = true;
-            let result = self.read_u8(0x210);
-            println!("result = {}", result);
-        }
+        // if self.reg_pc >= 0x45C0 {
+        //     self.is_stopped = true;
+        //     let result = self.read_u8(0x210);
+        //     println!("result = {}", result);
+        // }
         ret
     }
 
@@ -104,6 +104,7 @@ impl MOS6502 {
     fn get_absolute_addr(&mut self, offset: u8) -> u16 {
         let lo = self.read_pc() as u16;
         let mut hi = self.read_pc() as u16;
+        println!("lo {:02x}, hi {:02x}", lo, hi);
         hi = hi << 8;
         lo + hi + (offset as u16)
     }
@@ -236,8 +237,8 @@ impl MOS6502 {
         while self.cycle_count < target_cycles {
             i = i + 1;
             if !self.is_stopped {
-                let result = self.read_u8(0x210);
-                println!("result = {}", result);
+                // let result = self.read_u8(0x210);
+                // println!("result = {}", result);
 
                 let opcode = self.read_pc();
                 let r = self.get_status_registers();
@@ -1249,6 +1250,7 @@ impl MOS6502 {
                         let addr = self.get_absolute_addr(0);
                         let value = self.read_u8(addr);
                         let result = self.rol(value);
+                        println!("addr {:02x}, value {:02x}, result {:02x}", addr, value, result);
                         self.write_u8(addr, result);
                         self.cycles(6);
                     }
@@ -1286,20 +1288,22 @@ impl MOS6502 {
                         self.cycles(6);
                     }
                     0x7e => {
-                        //ROR,ABS,3,6,CZidbVN
-                        let addr = self.get_absolute_addr(0);
+                        //ROR,ABSX,3,7,CZidbVN
+                        let offset = self.reg_x;
+                        let addr = self.get_absolute_addr(offset);
                         let value = self.read_u8(addr);
                         let result = self.ror(value);
+                        println!("offset {:02x}, addr {:02x}, value {:02x}, result {:02x}", offset, addr, value, result);
                         self.write_u8(addr, result);                        
                         self.update_flags_zn(result);
                         self.cycles(6);
                     }
                     0x6e => {
-                        //ROR,ABSX,3,7,CZidbv
-                        let offset = self.reg_x;
-                        let addr = self.get_absolute_addr(offset);
+                        //ROR,ABS,3,6,CZidbv
+                        let addr = self.get_absolute_addr(0);
                         let value = self.read_u8(addr);
                         let result = self.ror(value);
+                        println!("addr {:02x}, value {:02x}, result {:02x}", addr, value, result);
                         self.write_u8(addr, result);                        
                         self.update_flags_zn(result);
                         self.cycles(6);
@@ -1390,7 +1394,6 @@ impl MOS6502 {
                         let offset = self.reg_x;
                         let addr = self.get_absolute_addr(offset);
                         let val = self.reg_a;
-                        println!(" offset {:02x}, addr {:02x}, val {:02x}", offset, addr, val);
                         self.write_u8(addr, val);
                         self.cycles(5);
                     }

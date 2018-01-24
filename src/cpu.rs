@@ -8,6 +8,7 @@ pub struct MOS6502 {
     reg_pc: u16,
     f_negative: bool,
     f_overflow: bool,
+    f_constant: bool,
     f_break: bool,
     f_decimal: bool,
     f_interrupt: bool,
@@ -30,7 +31,8 @@ impl MOS6502 {
             reg_pc: 0,
             f_negative: false,
             f_overflow: false,
-            f_break: false,
+            f_constant: true,
+            f_break: true,
             f_decimal: false,
             f_interrupt: false,
             f_zero: false,
@@ -49,7 +51,8 @@ impl MOS6502 {
             self.reg_pc = 0;
             self.f_negative = false;
             self.f_overflow = false;
-            self.f_break = false;
+            self.f_constant = true;
+            self.f_break = true;
             self.f_decimal = false;
             self.f_interrupt = false;
             self.f_zero = false;
@@ -72,11 +75,9 @@ impl MOS6502 {
         let addr = self.reg_pc;
         let ret = self.read_u8(addr);
         self.reg_pc += 1;
-        // if self.reg_pc >= 0x45C0 {
-        //     self.is_stopped = true;
-        //     let result = self.read_u8(0x210);
-        //     println!("result = {}", result);
-        // }
+        if self.reg_pc >= 0x45C0 {
+             self.is_stopped = true;
+        }
         ret
     }
 
@@ -104,7 +105,6 @@ impl MOS6502 {
     fn get_absolute_addr(&mut self, offset: u8) -> u16 {
         let lo = self.read_pc() as u16;
         let mut hi = self.read_pc() as u16;
-        println!("lo {:02x}, hi {:02x}", lo, hi);
         hi = hi << 8;
         lo + hi + (offset as u16)
     }
@@ -136,32 +136,35 @@ impl MOS6502 {
         let addr = 0x100 + (self.reg_sp as u16) as u16;
         self.write_u8(addr, value);
         self.reg_sp = self.reg_sp - 1;
-        println!("stack push -> addr {:04x}, value {:02x} SP {:04x} ", addr, value, self.reg_sp);        
     }
 
     fn stack_pull(&mut self) -> u8 {
         self.reg_sp = self.reg_sp + 1;
         let addr = 0x100 + (self.reg_sp as u16) as u16;
         let result = self.read_u8(addr);
-
-        println!("stack pull -> addr {:04x}, value {:02x}, SP {:02x}", addr, result, self.reg_sp);
         result
     }
 
     fn set_status_registers(&mut self, value: u8) {
-        self.f_carry = (value & 0x01) == 0x01;
-        self.f_zero = (value & 0x02) == 0x02;
-        self.f_decimal = (value & 0x08) == 0x08;
-        self.f_overflow = (value & 0x40) == 0x40;
         self.f_negative = (value & 0x80) == 0x80;
+        self.f_overflow = (value & 0x40) == 0x40;
+        self.f_constant = true;
+        self.f_break = (value & 0x10) == 0x10;
+        self.f_decimal = (value & 0x08) == 0x08;
+        self.f_interrupt = (value & 0x04) == 0x04;
+        self.f_zero = (value & 0x02) == 0x02;
+        self.f_carry = (value & 0x01) == 0x01;
     }
 
     fn get_status_registers(&mut self) -> u8 {
-        ((if self.f_negative { 1 } else { 0 }) << 7) |
-        ((if self.f_overflow { 1 } else { 0 }) << 6) |
-        ((if self.f_decimal { 1 } else { 0 }) << 3) |
-        ((if self.f_zero { 1 } else { 0 }) << 1) |
-        (if self.f_carry { 1 } else { 0 })
+        (if self.f_negative { 0x80 } else { 0 }) |
+        (if self.f_overflow { 0x40 } else { 0 }) |
+        (0x20) |
+        (if self.f_break {0x10} else { 0 }) |
+        (if self.f_decimal { 0x08 } else { 0 })  |
+        (if self.f_interrupt { 0x04 } else { 0 })  |        
+        (if self.f_zero { 0x02 } else { 0 })  |
+        (if self.f_carry { 0x01 } else { 0 })
     }
 
     fn get_carry_amount(&mut self) -> u8 {
@@ -240,22 +243,8 @@ impl MOS6502 {
         while self.cycle_count < target_cycles {
             i = i + 1;
             if !self.is_stopped {
-                // let result = self.read_u8(0x210);
-                // println!("result = {}", result);
-
                 let opcode = self.read_pc();
                 let r = self.get_status_registers();
-                println!(
-                    "{:02}) A {:02X}, X {:02X}, Y {:02X}, PC {:04X}, SP {:02X}, R {:08b}, OP {:02X}",
-                    i,
-                    self.reg_a,
-                    self.reg_x,
-                    self.reg_y,
-                    (self.reg_pc - 1),
-                    self.reg_sp,
-                    r, 
-                    opcode
-                );
                 match opcode {
                     0x69 => {
                         //ADC,IMM,2,2,CZidbVN
@@ -529,7 +518,7 @@ impl MOS6502 {
                         //BRK,IMP,1,7,czidbVN
                         self.f_break = true;
                         self.cycles(2);
-                        //TODO
+                        println!("Stopping execution on BRK {:04x}", self.reg_pc);
                         self.is_stopped = true;
                     }
                     0x18 => {
@@ -594,9 +583,7 @@ impl MOS6502 {
                         //RTS,IMP,1,6,czidbVN
                         let mut addr = self.stack_pull() as u16;
                         addr |= (self.stack_pull() as u16) << 8;
-                        let original = self.reg_pc;
                         self.reg_pc = addr;
-                        println!("RTS initial {:04x}, addr {:04x}, destination {:04x}", original, addr, self.reg_pc);
                         self.cycles(2);                        
                     }
                     0x38 => {
@@ -944,7 +931,6 @@ impl MOS6502 {
                         //JMP,ABS,3,3,czidbVN
                         let mut addr = self.read_pc() as u16;
                         addr |= (self.read_pc() as u16) << 8;
-                        println!("JMP ABS initial {:04x}, destination {:04x}", self.reg_pc, addr);
                         self.reg_pc = addr;
                     }
                     0x6c => {
@@ -952,7 +938,6 @@ impl MOS6502 {
                         let mut addr = self.read_pc() as u16;
                         addr |= (self.read_pc() as u16) << 8;
                         let dest = self.get_indirect_addr(addr);
-                        println!("JMP IND addr {:04x}, initial {:04x}, destination {:04x}", addr, self.reg_pc, dest);
                         self.reg_pc = dest;
                     }
                     0x20 => {
@@ -963,7 +948,6 @@ impl MOS6502 {
                         self.stack_push((reg_pc >> 8) as u8);
                         self.stack_push(reg_pc as u8);
                         self.reg_pc = addr;
-                        println!("JSR initial {:04x}, destination {:04x}", reg_pc, addr);
                         self.cycles(3);                        
                     }
                     0xa9 => {
@@ -1258,7 +1242,6 @@ impl MOS6502 {
                         let addr = self.get_absolute_addr(0);
                         let value = self.read_u8(addr);
                         let result = self.rol(value);
-                        println!("addr {:02x}, value {:02x}, result {:02x}", addr, value, result);
                         self.write_u8(addr, result);
                         self.cycles(6);
                     }
@@ -1301,7 +1284,6 @@ impl MOS6502 {
                         let addr = self.get_absolute_addr(offset);
                         let value = self.read_u8(addr);
                         let result = self.ror(value);
-                        println!("offset {:02x}, addr {:02x}, value {:02x}, result {:02x}", offset, addr, value, result);
                         self.write_u8(addr, result);                        
                         self.update_flags_zn(result);
                         self.cycles(6);
@@ -1311,7 +1293,6 @@ impl MOS6502 {
                         let addr = self.get_absolute_addr(0);
                         let value = self.read_u8(addr);
                         let result = self.ror(value);
-                        println!("addr {:02x}, value {:02x}, result {:02x}", addr, value, result);
                         self.write_u8(addr, result);                        
                         self.update_flags_zn(result);
                         self.cycles(6);
@@ -1474,22 +1455,38 @@ impl MOS6502 {
                         self.write_u8(addr, val);
                         self.cycles(4);
                     }
-
                     _ => {
-                        println!(
-                            "A {}, X {}, Y {}, PC {}",
+                        println!("A {:02x}, X {:02x}, Y {:02x}, PC {:04x}",
                             self.reg_a,
                             self.reg_x,
                             self.reg_y,
                             self.reg_pc
                         );
-                        panic!("invalid opcopde {}", opcode)
+                        panic!("invalid opcopde {:02x}", opcode)
                     }
                 }
+
+                println!(
+                    "{:02}) A {:02X}, X {:02X}, Y {:02X}, PC {:04X}, SP {:02X}, R {:08b}, OP {:02X}",
+                    i,
+                    self.reg_a,
+                    self.reg_x,
+                    self.reg_y,
+                    self.reg_pc,
+                    self.reg_sp,
+                    r, 
+                    opcode
+                );
+
             } else {
                 self.cycles(2);
             }
         }
+
+        /* TODO: Remove test suite value check */
+        let result = self.read_u8(0x210);
+        println!("result = {}", result);
+
         self.cycle_count
     }
 }

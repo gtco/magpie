@@ -29,7 +29,11 @@ fn main() {
     let mut cpu = magpie::cpu::MOS6502::new();
     cpu.reset();
 
-    cpu.load(buf, 0x600);
+    if filename.starts_with("test") {
+        cpu.load(buf, 0x600);
+    } else {
+        cpu.load(buf, 0x4000);
+    }
 
     let n = cpu.run(2048);
 

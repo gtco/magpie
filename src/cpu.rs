@@ -1,4 +1,7 @@
-pub const MEMORY_SIZE: usize = 64 * 1024;
+use std::io::stdout;
+use std::io::Write;
+
+pub const MEMORY_SIZE: usize = 65536;
 
 pub struct MOS6502 {
     reg_a: u8,
@@ -47,8 +50,7 @@ impl MOS6502 {
             self.reg_a = 0;
             self.reg_x = 0;
             self.reg_y = 0;
-            self.reg_sp = 0xff;
-            self.reg_pc = 0;
+            self.reg_sp = 0xfd;
             self.f_negative = false;
             self.f_overflow = false;
             self.f_constant = true;
@@ -58,6 +60,11 @@ impl MOS6502 {
             self.f_zero = false;
             self.f_carry = false;
             self.is_stopped = false;
+
+            let lo = self.read_u8(0xfffc) as u16;
+            let hi = self.read_u8(0xfffd) as u16;
+            self.reg_pc = lo + (hi << 8);
+            self.cycle_count = 0;
     }
 
     pub fn load(&mut self, program: Vec<u8>, address: u16) {
@@ -68,8 +75,6 @@ impl MOS6502 {
             let location = i + address as usize;
             self.ram[location] = program[i];
         }
-
-        self.reg_pc = address;
     }
 
     fn read_pc(&mut self) -> u8 {
@@ -80,16 +85,20 @@ impl MOS6502 {
     }
 
     fn read_u8(&mut self, address: u16) -> u8 {
+        let result = self.ram[address as usize];
         if address == 0xF004 {
-            println!("Reading from $F004");
+            if result != 0 {
+//                println!("Reading from $F004, returning {:?}", result);
+                self.ram[address as usize] = 0;
+            }
         }
-        self.ram[address as usize]
+        result
     }
 
-    fn write_u8(&mut self, address: u16, value: u8) {
+    pub fn write_u8(&mut self, address: u16, value: u8) {
         self.ram[address as usize] = value;
         if address == 0xF001 {
-            println!("Writing to $F001 {:?}", value);
+            print!("{}", value as char);
         }
     }
 
@@ -140,10 +149,18 @@ impl MOS6502 {
         let addr = 0x100 + (self.reg_sp as u16) as u16;
         self.write_u8(addr, value);
         self.reg_sp = self.reg_sp - 1;
+        if self.reg_sp <= 1 {
+            println!("push: stack overflow {:?}", self.reg_pc);
+            self.is_stopped = true;
+        }
     }
 
     fn stack_pull(&mut self) -> u8 {
         self.reg_sp = self.reg_sp + 1;
+        if self.reg_sp > 0xff {
+            println!("pull: stack overflow {:?}", self.reg_pc);
+            self.is_stopped = true;
+        }
         let addr = 0x100 + (self.reg_sp as u16) as u16;
         let result = self.read_u8(addr);
         result
@@ -179,6 +196,7 @@ impl MOS6502 {
         self.f_negative = (result & 0x80) == 0x80;
         self.f_zero = (result as u8) == 0;
         self.f_carry = result >= 0;
+        //self.f_carry = sum & 0xff00 > 0;
     }
 
     fn branch(&mut self) {
@@ -242,15 +260,20 @@ impl MOS6502 {
         result
     }
 
+    pub fn get_cycle_count(&mut self) -> i32 {
+        self.cycle_count
+    }
+
+    pub fn is_running(&mut self) -> bool {
+        !self.is_stopped
+    }
+
     pub fn run(&mut self, target_cycles: i32) -> i32 {
         self.cycle_count = 0;
-        while (self.cycle_count < target_cycles) && !self.is_stopped {
+        while target_cycles > 0 && !self.is_stopped {
                 self.step();
-        }
-        println!("{:?} {:?} {:?}", self.cycle_count, target_cycles, self.is_stopped);
-        /* TODO: Remove test suite value check */
-        let result = self.read_u8(0x210);
-        println!("result = {}", result);
+        } 
+      
         self.cycle_count
     }
 
@@ -800,9 +823,13 @@ impl MOS6502 {
             }
             0xca => {
                 //DEX,IMP,1,2,cZidbVN
-                let result = self.reg_x.wrapping_sub(1);
-                self.reg_x = result;
-                self.update_flags_zn(result);
+                if self.reg_x == 0 {
+                    self.reg_x = 0xff
+                } else {
+                    self.reg_x = self.reg_x - 1;
+                }
+                let value = self.reg_x;
+                self.update_flags_zn(value);
                 self.cycles(2);
             }
             0x88 => {
@@ -818,14 +845,24 @@ impl MOS6502 {
             }
             0xe8 => {
                 //INX,IMP,1,2,cZidbVN
-                self.reg_x = self.reg_x + 1;
+//                self.reg_x = self.reg_x + 1;
+                if self.reg_x == 0xff {
+                    self.reg_x = 0;                        
+                } else {
+                    self.reg_x = self.reg_x + 1;                        
+                }
                 let value = self.reg_x;
                 self.update_flags_zn(value);
                 self.cycles(2);
             }
             0xc8 => {
                 //INY,IMP,1,2,cZidbVN
-                self.reg_y = self.reg_y + 1;
+//                self.reg_y = self.reg_y + 1;
+                if self.reg_y == 0xff {
+                    self.reg_y = 0;                        
+                } else {
+                    self.reg_y = self.reg_y + 1;                        
+                }
                 let value = self.reg_y;
                 self.update_flags_zn(value);
                 self.cycles(2);
@@ -1477,20 +1514,22 @@ impl MOS6502 {
             }
         }
 
-        #[cfg(debug_assertions)]
-        {
-            let registers = self.get_status_registers();
-            println!("A {:02X}, X {:02X}, Y {:02X}, PC {:04X}, SP {:02X}, R {:08b}, OP {:02X}",
-                self.reg_a,
-                self.reg_x,
-                self.reg_y,
-                self.reg_pc,
-                self.reg_sp,
-                registers,
-                opcode
-            );
-        }
+        // #[cfg(debug_assertions)]
+        // {
+        //     let registers = self.get_status_registers();
+        //     println!("A {:02X}, X {:02X}, Y {:02X}, PC {:04X}, SP {:02X}, R {:08b}, OP {:02X}",
+        //         self.reg_a,
+        //         self.reg_x,
+        //         self.reg_y,
+        //         self.reg_pc,
+        //         self.reg_sp,
+        //         registers,
+        //         opcode
+        //     );
+        // }
+        stdout().flush();
     }
+
 }
 
 #[cfg(test)]

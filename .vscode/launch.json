@@ -9,7 +9,7 @@
             "type": "cppvsdbg",
             "request": "launch",
             "program": "${workspaceFolder}/target/debug/magpie.exe",
-            "args": ["ehbasic.bin"],
+            "args": ["test00.bin"],
             "stopAtEntry": false,
             "cwd": "${workspaceFolder}",
             "environment": [],

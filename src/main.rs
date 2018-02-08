@@ -74,9 +74,9 @@ fn main() {
                     }
                 }
 
-                cpu.run(1024);
+                cpu.run(2*1024);
 
-                thread::sleep(Duration::from_millis(15));
+                thread::sleep(Duration::from_millis(100));
 
             } else {
                 break;

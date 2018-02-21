@@ -7,8 +7,8 @@ pub struct DebugFrame {
     a: u8,
     x: u8,
     y: u8,
-    registers : u8,
-    opcode_name : String
+    registers: u8,
+    opcode_name: String,
 }
 
 pub struct MOS6502 {
@@ -29,12 +29,12 @@ pub struct MOS6502 {
     cycle_count: i32,
     is_stopped: bool,
 
-    debug_vector : VecDeque<DebugFrame>,
-    platform : Box<Platform>
+    debug_vector: VecDeque<DebugFrame>,
+    platform: Box<Platform>,
 }
 
 impl MOS6502 {
-    pub fn new(platform : Box<Platform>) -> MOS6502 {
+    pub fn new(platform: Box<Platform>) -> MOS6502 {
         MOS6502 {
             reg_a: 0,
             reg_x: 0,
@@ -52,30 +52,30 @@ impl MOS6502 {
             cycle_count: 0,
             is_stopped: false,
             platform: platform,
-            debug_vector :  VecDeque::new()
+            debug_vector: VecDeque::new(),
         }
     }
 
     pub fn reset(&mut self) {
-            self.reg_a = 0;
-            self.reg_x = 0;
-            self.reg_y = 0;
-            self.reg_sp = 0xfd;
-            self.f_negative = false;
-            self.f_overflow = false;
-            self.f_constant = true;
-            self.f_break = true;
-            self.f_decimal = false;
-            self.f_interrupt = false;
-            self.f_zero = false;
-            self.f_carry = false;
-            self.is_stopped = false;
+        self.reg_a = 0;
+        self.reg_x = 0;
+        self.reg_y = 0;
+        self.reg_sp = 0xfd;
+        self.f_negative = false;
+        self.f_overflow = false;
+        self.f_constant = true;
+        self.f_break = true;
+        self.f_decimal = false;
+        self.f_interrupt = false;
+        self.f_zero = false;
+        self.f_carry = false;
+        self.is_stopped = false;
 
-            let lo = self.platform.read(0xfffc) as u16;
-            let hi = self.platform.read(0xfffd) as u16;
+        let lo = self.platform.read(0xfffc) as u16;
+        let hi = self.platform.read(0xfffd) as u16;
 
-            self.reg_pc = lo + (hi << 8);
-            self.cycle_count = 0;
+        self.reg_pc = lo + (hi << 8);
+        self.cycle_count = 0;
     }
 
     fn read_pc(&mut self) -> u8 {
@@ -177,18 +177,24 @@ impl MOS6502 {
     }
 
     fn get_status_registers(&mut self) -> u8 {
-        (if self.f_negative { 0x80 } else { 0 }) |
-        (if self.f_overflow { 0x40 } else { 0 }) |
-        (0x20) |
-        (if self.f_break {0x10} else { 0 }) |
-        (if self.f_decimal { 0x08 } else { 0 })  |
-        (if self.f_interrupt { 0x04 } else { 0 })  |        
-        (if self.f_zero { 0x02 } else { 0 })  |
-        (if self.f_carry { 0x01 } else { 0 })
+        (if self.f_negative { 0x80 } else { 0 }) | (if self.f_overflow { 0x40 } else { 0 }) | (0x20)
+            | (if self.f_break { 0x10 } else { 0 }) | (if self.f_decimal {
+            0x08
+        } else {
+            0
+        }) | (if self.f_interrupt { 0x04 } else { 0 }) | (if self.f_zero {
+            0x02
+        } else {
+            0
+        }) | (if self.f_carry { 0x01 } else { 0 })
     }
 
     fn get_carry_amount(&mut self) -> u8 {
-        if self.f_carry { 1 } else { 0 }
+        if self.f_carry {
+            1
+        } else {
+            0
+        }
     }
 
     fn update_flags_zcn(&mut self, result: i32) {
@@ -203,12 +209,11 @@ impl MOS6502 {
         let offset = self.read_pc() as u16;
         if offset > 0x7F {
             self.reg_pc = addr - (0xff - offset);
-        }
-        else {
+        } else {
             self.reg_pc += offset;
         }
     }
-    
+
     fn adc(&mut self, value: u8) {
         let sum = (self.reg_a as u16) + (value as u16) + (self.get_carry_amount() as u16);
         let result = sum as u8;
@@ -224,7 +229,8 @@ impl MOS6502 {
         let sum = (self.reg_a as u16) + (complement as u16) + (borrow as u16);
         let result = sum as u8;
         self.f_carry = sum & 0xff00 > 0;
-        self.f_overflow = (self.reg_a ^ complement) & 0x80 == 0 && (self.reg_a ^ result) & 0x80 == 0x80;
+        self.f_overflow =
+            (self.reg_a ^ complement) & 0x80 == 0 && (self.reg_a ^ result) & 0x80 == 0x80;
         self.reg_a = result;
         self.update_flags_zn(result);
     }
@@ -241,14 +247,14 @@ impl MOS6502 {
         let carry = if self.f_carry { 0x01 } else { 0 };
         let result = (value as u16) << 1 | carry;
         self.f_carry = (result & 0xff00) > 0;
-        self.update_flags_zn(result as u8);        
+        self.update_flags_zn(result as u8);
         result as u8
     }
 
     fn asl(&mut self, value: u8) -> u8 {
         let shift = (value as u16) << 1;
         self.f_carry = shift & 0xff00 > 0;
-        self.update_flags_zn(shift as u8);        
+        self.update_flags_zn(shift as u8);
         shift as u8
     }
 
@@ -270,9 +276,9 @@ impl MOS6502 {
     pub fn run(&mut self, target_cycles: i32) -> i32 {
         self.cycle_count = 0;
         while self.cycle_count < target_cycles && !self.is_stopped {
-                self.step();
-        } 
-     
+            self.step();
+        }
+
         self.cycle_count
     }
 
@@ -315,7 +321,7 @@ impl MOS6502 {
             }
             0x7d => {
                 //ADC,ABSX,3,4,CZidbV
-                opcode_name = String::from("ADC");                
+                opcode_name = String::from("ADC");
                 let offset = self.reg_x;
                 let addr = self.get_absolute_addr(offset);
                 let value = self.read_u8(addr);
@@ -324,7 +330,7 @@ impl MOS6502 {
             }
             0x79 => {
                 //ADC,ABSY,3,4,CZidbV
-                opcode_name = String::from("ADC");                
+                opcode_name = String::from("ADC");
                 let offset = self.reg_y;
                 let addr = self.get_absolute_addr(offset);
                 let value = self.read_u8(addr);
@@ -333,7 +339,7 @@ impl MOS6502 {
             }
             0x61 => {
                 //ADC,INDX,2,6,CZidbV
-                opcode_name = String::from("ADC");                
+                opcode_name = String::from("ADC");
                 let addr = self.get_indirect_x_addr();
                 let value = self.read_u8(addr);
                 self.adc(value);
@@ -341,7 +347,7 @@ impl MOS6502 {
             }
             0x71 => {
                 //ADC,INDY,2,5,CZidbV
-                opcode_name = String::from("ADC");                
+                opcode_name = String::from("ADC");
                 let addr = self.get_indirect_y_addr();
                 let value = self.read_u8(addr);
                 self.adc(value);
@@ -358,7 +364,7 @@ impl MOS6502 {
             }
             0x25 => {
                 //AND,ZP,2,3,cZidbvN
-                opcode_name = String::from("AND");                
+                opcode_name = String::from("AND");
                 let address = self.get_zeropage_addr(0);
                 let value = self.read_u8(address);
                 let result = self.reg_a & value;
@@ -368,7 +374,7 @@ impl MOS6502 {
             }
             0x35 => {
                 //AND,ZPX,2,4,cZidbvN
-                opcode_name = String::from("AND");                
+                opcode_name = String::from("AND");
                 let offset = self.reg_x;
                 let address = self.get_zeropage_addr(offset);
                 let value = self.read_u8(address);
@@ -379,7 +385,7 @@ impl MOS6502 {
             }
             0x2d => {
                 //AND,ABS,3,4,cZidbVN
-                opcode_name = String::from("AND");                
+                opcode_name = String::from("AND");
                 let address = self.get_absolute_addr(0);
                 let value = self.read_u8(address);
                 let result = self.reg_a & value;
@@ -411,7 +417,7 @@ impl MOS6502 {
             }
             0x21 => {
                 //AND,INDX,2,6,cZidbv
-                opcode_name = String::from("AND");                
+                opcode_name = String::from("AND");
                 let address = self.get_indirect_x_addr();
                 let value = self.read_u8(address);
                 let result = self.reg_a & value;
@@ -421,7 +427,7 @@ impl MOS6502 {
             }
             0x31 => {
                 //AND,INDY,2,5,cZidbv
-                opcode_name = String::from("AND");                
+                opcode_name = String::from("AND");
                 let address = self.get_indirect_y_addr();
                 let value = self.read_u8(address);
                 let result = self.reg_a & value;
@@ -447,7 +453,7 @@ impl MOS6502 {
             }
             0x16 => {
                 //ASL,ZPX,2,6,CZidbvN
-                opcode_name = String::from("ASL");                
+                opcode_name = String::from("ASL");
                 let offset = self.reg_x;
                 let addr = self.get_zeropage_addr(offset);
                 let mut value = self.read_u8(addr);
@@ -457,7 +463,7 @@ impl MOS6502 {
             }
             0x0e => {
                 //ASL,ABS,3,6,CZidbvN
-                opcode_name = String::from("ASL");                
+                opcode_name = String::from("ASL");
                 let addr = self.get_absolute_addr(0);
                 let mut value = self.read_u8(addr);
                 value = self.asl(value);
@@ -487,14 +493,14 @@ impl MOS6502 {
             }
             0xB0 => {
                 //BCS,REL,2,2/3,czidb
-                opcode_name = String::from("BCS");                
+                opcode_name = String::from("BCS");
                 if self.f_carry {
                     self.branch();
                     self.cycles(3);
                 } else {
                     self.read_pc();
                     self.cycles(2);
-                }                        
+                }
             }
             0xF0 => {
                 //BEQ,REL,2,2/3,czidb
@@ -503,62 +509,62 @@ impl MOS6502 {
                     self.branch();
                     self.cycles(3);
                 } else {
-                    self.read_pc();                            
+                    self.read_pc();
                     self.cycles(2);
                 }
             }
             0x30 => {
                 //BMI,REL,2,2/3,czidb
-                opcode_name = String::from("BMI");                
+                opcode_name = String::from("BMI");
                 if self.f_negative {
                     self.branch();
                     self.cycles(3);
                 } else {
-                    self.read_pc();                            
+                    self.read_pc();
                     self.cycles(2);
                 }
             }
             0xD0 => {
                 //BNE,REL,2,2/3,czidb
-                opcode_name = String::from("BNE");                
+                opcode_name = String::from("BNE");
                 if !self.f_zero {
                     self.branch();
                     self.cycles(3);
                 } else {
-                    self.read_pc();                            
+                    self.read_pc();
                     self.cycles(2);
                 }
             }
             0x10 => {
                 //BPL,REL,2,2/3,czidb
-                opcode_name = String::from("BPL");                                
+                opcode_name = String::from("BPL");
                 if !self.f_negative {
                     self.branch();
                     self.cycles(3);
                 } else {
-                    self.read_pc();                            
+                    self.read_pc();
                     self.cycles(2);
                 }
             }
             0x50 => {
                 //BVC,REL,2,2/3,czidb
-                opcode_name = String::from("BVC");                                
+                opcode_name = String::from("BVC");
                 if !self.f_overflow {
                     self.branch();
                     self.cycles(3);
                 } else {
-                    self.read_pc();                            
+                    self.read_pc();
                     self.cycles(2);
                 }
             }
             0x70 => {
                 //BVS,REL,2,2/3,czidb
-                opcode_name = String::from("BVS");                                
+                opcode_name = String::from("BVS");
                 if self.f_overflow {
                     self.branch();
                     self.cycles(3);
                 } else {
-                    self.read_pc();                            
+                    self.read_pc();
                     self.cycles(2);
                 }
             }
@@ -569,7 +575,7 @@ impl MOS6502 {
                 let value = self.read_u8(addr);
                 let result = self.reg_a & value;
                 self.update_flags_zn(result);
-                self.f_overflow = (value & 0x40) == 0x40; 
+                self.f_overflow = (value & 0x40) == 0x40;
                 self.cycles(3);
             }
             0x2c => {
@@ -578,7 +584,7 @@ impl MOS6502 {
                 let addr = self.get_absolute_addr(0);
                 let value = self.read_u8(addr);
                 let result = self.reg_a & value;
-                self.f_overflow = (value & 0x40) == 0x40; 
+                self.f_overflow = (value & 0x40) == 0x40;
                 self.update_flags_zn(result);
                 self.cycles(4);
             }
@@ -664,7 +670,7 @@ impl MOS6502 {
                 let mut addr = self.stack_pull() as u16;
                 addr |= (self.stack_pull() as u16) << 8;
                 self.reg_pc = addr;
-                self.cycles(2);                        
+                self.cycles(2);
             }
             0x38 => {
                 //SEC,IMP,1,2,CzidbVN
@@ -921,11 +927,11 @@ impl MOS6502 {
             0xe8 => {
                 //INX,IMP,1,2,cZidbVN
                 opcode_name = String::from("INX");
-//                self.reg_x = self.reg_x + 1;
+                //                self.reg_x = self.reg_x + 1;
                 if self.reg_x == 0xff {
-                    self.reg_x = 0;                        
+                    self.reg_x = 0;
                 } else {
-                    self.reg_x = self.reg_x + 1;                        
+                    self.reg_x = self.reg_x + 1;
                 }
                 let value = self.reg_x;
                 self.update_flags_zn(value);
@@ -934,11 +940,11 @@ impl MOS6502 {
             0xc8 => {
                 //INY,IMP,1,2,cZidbVN
                 opcode_name = String::from("INY");
-//                self.reg_y = self.reg_y + 1;
+                //                self.reg_y = self.reg_y + 1;
                 if self.reg_y == 0xff {
-                    self.reg_y = 0;                        
+                    self.reg_y = 0;
                 } else {
-                    self.reg_y = self.reg_y + 1;                        
+                    self.reg_y = self.reg_y + 1;
                 }
                 let value = self.reg_y;
                 self.update_flags_zn(value);
@@ -980,7 +986,7 @@ impl MOS6502 {
                 let addr = self.get_absolute_addr(0);
                 let value = self.read_u8(addr);
                 let result = self.reg_a ^ value;
-                self.reg_a = result;                        
+                self.reg_a = result;
                 self.update_flags_zn(result);
                 self.cycles(4);
             }
@@ -991,7 +997,7 @@ impl MOS6502 {
                 let addr = self.get_absolute_addr(offset);
                 let value = self.read_u8(addr);
                 let result = self.reg_a ^ value;
-                self.reg_a = result;                        
+                self.reg_a = result;
                 self.update_flags_zn(result);
                 self.cycles(4);
             }
@@ -1002,7 +1008,7 @@ impl MOS6502 {
                 let addr = self.get_absolute_addr(offset);
                 let value = self.read_u8(addr);
                 let result = self.reg_a ^ value;
-                self.reg_a = result;                        
+                self.reg_a = result;
                 self.update_flags_zn(result);
                 self.cycles(4);
             }
@@ -1012,7 +1018,7 @@ impl MOS6502 {
                 let addr = self.get_indirect_x_addr();
                 let value = self.read_u8(addr);
                 let result = self.reg_a ^ value;
-                self.reg_a = result;                        
+                self.reg_a = result;
                 self.update_flags_zn(result);
                 self.cycles(6);
             }
@@ -1022,7 +1028,7 @@ impl MOS6502 {
                 let addr = self.get_indirect_y_addr();
                 let value = self.read_u8(addr);
                 let result = self.reg_a ^ value;
-                self.reg_a = result;                        
+                self.reg_a = result;
                 self.update_flags_zn(result);
                 self.cycles(6);
             }
@@ -1104,7 +1110,7 @@ impl MOS6502 {
                 self.stack_push((reg_pc >> 8) as u8);
                 self.stack_push(reg_pc as u8);
                 self.reg_pc = addr;
-                self.cycles(3);                        
+                self.cycles(3);
             }
             0xa9 => {
                 //LDA,IMM,2,2,cZidbVN
@@ -1323,7 +1329,7 @@ impl MOS6502 {
                 opcode_name = String::from("ORA");
                 let value = self.read_pc();
                 let result = self.reg_a | value;
-                self.reg_a = result;                        
+                self.reg_a = result;
                 self.update_flags_zn(result);
                 self.cycles(2);
             }
@@ -1333,7 +1339,7 @@ impl MOS6502 {
                 let addr = self.get_zeropage_addr(0);
                 let value = self.read_u8(addr);
                 let result = self.reg_a | value;
-                self.reg_a = result;                        
+                self.reg_a = result;
                 self.update_flags_zn(result);
                 self.cycles(3);
             }
@@ -1386,7 +1392,7 @@ impl MOS6502 {
                 let addr = self.get_indirect_x_addr();
                 let value = self.read_u8(addr);
                 let result = self.reg_a | value;
-                self.reg_a = result;            
+                self.reg_a = result;
                 self.update_flags_zn(result);
                 self.cycles(6);
             }
@@ -1443,7 +1449,7 @@ impl MOS6502 {
                 let addr = self.get_absolute_addr(offset);
                 let value = self.read_u8(addr);
                 let result = self.rol(value);
-                self.write_u8(addr, result);                       
+                self.write_u8(addr, result);
                 self.cycles(6);
             }
             0x6a => {
@@ -1460,7 +1466,7 @@ impl MOS6502 {
                 let addr = self.get_zeropage_addr(0);
                 let value = self.read_u8(addr);
                 let result = self.ror(value);
-                self.write_u8(addr, result);                        
+                self.write_u8(addr, result);
                 self.cycles(5);
             }
             0x76 => {
@@ -1470,7 +1476,7 @@ impl MOS6502 {
                 let addr = self.get_zeropage_addr(offset);
                 let value = self.read_u8(addr);
                 let result = self.ror(value);
-                self.write_u8(addr, result);                        
+                self.write_u8(addr, result);
                 self.cycles(6);
             }
             0x7e => {
@@ -1480,7 +1486,7 @@ impl MOS6502 {
                 let addr = self.get_absolute_addr(offset);
                 let value = self.read_u8(addr);
                 let result = self.ror(value);
-                self.write_u8(addr, result);                        
+                self.write_u8(addr, result);
                 self.update_flags_zn(result);
                 self.cycles(6);
             }
@@ -1489,7 +1495,7 @@ impl MOS6502 {
                 let addr = self.get_absolute_addr(0);
                 let value = self.read_u8(addr);
                 let result = self.ror(value);
-                self.write_u8(addr, result);                        
+                self.write_u8(addr, result);
                 self.update_flags_zn(result);
                 self.cycles(6);
             }
@@ -1671,20 +1677,23 @@ impl MOS6502 {
                 self.cycles(4);
             }
             _ => {
-
                 for counter in &self.debug_vector {
-                    println!("PC {:04x} OP {:02X} A {:02X} X {:02X} Y {:02X} R {:08b} {}", counter.pc, counter.op, counter.a, counter.x, counter.y, counter.registers, counter.opcode_name);
+                    println!(
+                        "PC {:04x} OP {:02X} A {:02X} X {:02X} Y {:02X} R {:08b} {}",
+                        counter.pc,
+                        counter.op,
+                        counter.a,
+                        counter.x,
+                        counter.y,
+                        counter.registers,
+                        counter.opcode_name
+                    );
                 }
 
                 let registers = self.get_status_registers();
-                println!("A {:02X}, X {:02X}, Y {:02X}, PC {:04X}, SP {:02X}, R {:08b}, OP {:02X}",
-                    self.reg_a,
-                    self.reg_x,
-                    self.reg_y,
-                    self.reg_pc,
-                    self.reg_sp,
-                    registers,
-                    opcode
+                println!(
+                    "A {:02X}, X {:02X}, Y {:02X}, PC {:04X}, SP {:02X}, R {:08b}, OP {:02X}",
+                    self.reg_a, self.reg_x, self.reg_y, self.reg_pc, self.reg_sp, registers, opcode
                 );
 
                 panic!("invalid opcopde {:02x} {:04x}", opcode, self.reg_pc);
@@ -1693,13 +1702,13 @@ impl MOS6502 {
 
         let r = self.get_status_registers();
         self.debug_vector.push_front(DebugFrame {
-            pc : self.reg_pc,
-            op : opcode, 
-            a : self.reg_a,
-            x : self.reg_x,
-            y : self.reg_y,
-            registers : r,
-            opcode_name : opcode_name
+            pc: self.reg_pc,
+            op: opcode,
+            a: self.reg_a,
+            x: self.reg_x,
+            y: self.reg_y,
+            registers: r,
+            opcode_name: opcode_name,
         });
 
         if self.debug_vector.len() > 1000 {
@@ -1711,7 +1720,7 @@ impl MOS6502 {
         // {
         //     println!("PC {:04X}, OP {:02X} {}, A {:02X}, X {:02X}, Y {:02X}, SP {:02X}, R {:08b}, 0x2b {:02X}",
         //         starting_pc,
-        //         opcode,                
+        //         opcode,
         //         opcode_name,
         //         self.reg_a,
         //         self.reg_x,
@@ -1723,7 +1732,6 @@ impl MOS6502 {
         // }
         // }
     }
-
 }
 
 #[cfg(test)]
@@ -1772,7 +1780,7 @@ mod tests {
     }
 
     #[test]
-    fn ror () {
+    fn ror() {
         let mut cpu = MOS6502::new();
         cpu.reset();
         cpu.f_carry = true;
@@ -1782,7 +1790,7 @@ mod tests {
     }
 
     #[test]
-    fn rol () {
+    fn rol() {
         let mut cpu = MOS6502::new();
         cpu.reset();
         let result2 = cpu.rol(149);

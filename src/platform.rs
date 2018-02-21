@@ -5,4 +5,3 @@ pub trait Platform {
     fn key_ready(&self) -> bool;
     fn key_pressed(&mut self, key: u8);
 }
-
